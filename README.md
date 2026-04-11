@@ -152,13 +152,13 @@ A `DEPTH_HEIGHT_CALIBRATION` factor (default 0.55) compensates for YOLO bounding
 
 The arm chain is defined in `Jetson_Code/vex/setup.py` and solved by `Jetson_Code/vex/ik_solver.py` using [ikpy](https://github.com/Phylliade/ikpy):
 
-| Joint | Name | Axis | Limits |
-|-------|------|------|--------|
-| J0 | Turntable | Z (yaw) | 0°–360° |
-| J1 | Shoulder | Y (pitch) | 0°–150° |
-| J2 | Elbow | Y (pitch) | 0°–180° |
-| J3 | Wrist Yaw | Z (yaw) | 0°–180° |
-| J4 | Wrist Pitch | Y (pitch) | 0°–180° |
+| Joint | Name | Axis | Hardware Limits | IK Bounds (Solver) |
+|-------|------|------|-----------------|--------------------|
+| J0 | Turntable | Z (yaw) | -90° to 90° | -90° to 90° |
+| J1 | Shoulder | Y (pitch) | -52° to 100° | -52° to 100° |
+| J2 | Elbow | Y (pitch) | -90° to 90° | -90° to 90° |
+| J3 | Wrist Yaw | Z (yaw) | -90° to 90° | -5° to 5° |
+| J4 | Wrist Pitch | Y (pitch) | -90° to 90° | -90° to 90° |
 
 The end-effector is constrained to a **vertical downward orientation** for top-down grasping. The solver seeds from current joint positions (queried via `STATUS` command) for smoother motion planning.
 
