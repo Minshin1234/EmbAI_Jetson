@@ -57,22 +57,25 @@ flowchart TD
 
 ---
 
-## Repository Structure
-
-To keep cross-compilation environments clean, this repository is divided logically into two subdirectories:
+## Project Structure
 
 ```text
-AI_Microgrant/
-├── Jetson_Code/          ← Python codebase, Flask server, and ROS/Vision logic
-│   ├── stream.py
-│   ├── vision/
-│   ├── vex/
-│   └── Dockerfile
+EmbAI_Jetson/
+├── Jetson_Code/             ← Jetson Orin Nano Python stack (Vision + IK)
+│   ├── stream.py            ← Flask web server (entry point)
+│   ├── vision/              ← Camera + YOLO detection package
+│   ├── vex/                 ← Robot arm kinematics package
+│   ├── Dockerfile           ← Container image definition
+│   └── run_docker.sh        ← Launches the container
 │
-└── VEX_Brain_Code/       ← PROS C++ codebase for the VEX V5 hardware controller
-    ├── src/
-    ├── include/
-    └── project.pros
+├── VEX_Brain_Code/          ← VEX V5 PROS C++ code
+│   ├── src/
+│   │   ├── main.cpp         ← Entry point & hardware init
+│   │   ├── arm_hardware.cpp ← Motor and sensor interfaces
+│   │   └── serial_handler.cpp ← Serial protocol parsers
+│   └── project.pros         ← PROS configuration
+│
+└── README.md                ← This document
 ```
 
 > **IMPORTANT:** When compiling the robot codebase, you *must* open the `VEX_Brain_Code/` directory as your workspace root (e.g. `cd VEX_Brain_Code && pros mu`), rather than running PROS from this main root.
@@ -95,18 +98,19 @@ AI_Microgrant/
 
 ---
 
-## Quick Start (Jetson)
+## Quick Start
 
 ```bash
-cd Jetson_Code/
+# 1. Enter the Jetson Python stack folder
+cd Jetson_Code
 
-# 1. Build the Docker image (one-time)
-sudo docker build -t vex-jetson-app .
+# 2. Build the Docker image (one-time)
+sudo bash build_docker.sh
 
-# 2. Run the application
+# 3. Run the application
 bash run_docker.sh
 
-# 3. Open in browser
+# 4. Open in browser
 # http://<jetson-ip>:5000
 ```
 
@@ -160,15 +164,18 @@ The end-effector is constrained to a **vertical downward orientation** for top-d
 
 ### VEX V5 Serial Protocol
 
-The robot communicates with the Jetson over USB (`/dev/ttyACM0`) using serial ASCII:
+`Jetson_Code/vex/control.py` communicates with `VEX_Brain_Code/src/serial_handler.cpp` over a threaded serial bridge:
 
 ```text
 PING                          — heartbeat
-T <joint 0-4> <degrees>       — move single joint
-A <d0> <d1> <d2> <d3> <d4>   — move all joints
-HOME                          — all joints to 0°
-STOP                          — freeze all joints
-STATUS                        — query current positions
+T <joint 0-4> <degrees>       — move single joint to target degrees
+TR <joint 0-4> <radians>      — move single joint to target radians
+A <d0> <d1> <d2> <d3> <d4>    — move all 5 joints dynamically (degrees)
+AR <r0> <r1> <r2> <r3> <r4>   — move all 5 joints dynamically (radians)
+G <degrees>                   — explicit gripper control
+HOME                          — send all joints to 0° resting position
+STOP                          — emergency freeze all joints immediately
+STATUS                        — query current motor positions
                                 (V5 replies: POS <d0> <d1> <d2> <d3> <d4>)
 ```
 
