@@ -1,0 +1,50 @@
+# ==================================
+# PYTHON / JETSON VISION CODE
+# ==================================
+__pycache__/
+*.pyc
+*.pyo
+
+# Codex / AI agent state
+.codex
+
+# Virtual environments
+env/
+.venv/
+venv/
+
+# YOLO model weights (downloaded at runtime)
+*.pt
+
+# OS
+.DS_Store
+
+# Debian packages
+*.deb
+
+# Docker build artifacts
+.docker/
+
+# Ultralytics cache
+runs/
+
+# ==================================
+# VEX BRAIN PROS C++ CODE
+# ==================================
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+*.bin
+*.elf
+
+# PROS System / IDE
+.vscode/
+VEX_Brain_Code/bin/
+VEX_Brain_Code/.cache/
+VEX_Brain_Code/.d/
+VEX_Brain_Code/compile_commands.json
+VEX_Brain_Code/temp.log
+VEX_Brain_Code/temp.errors
+VEX_Brain_Code/*.ini
