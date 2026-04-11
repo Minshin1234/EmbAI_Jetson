@@ -2,7 +2,7 @@
 
 # Configuration
 CONTAINER_IMAGE="vex-jetson-app"
-PROJECT_DIR="/home/minchan/vex_jetson"
+PROJECT_DIR="/home/minchan/vex_jetson/Jetson_Code"
 
 echo "Launching YOLO Camera Stream from local image..."
 echo "Image: $CONTAINER_IMAGE"
