@@ -258,6 +258,48 @@ def pixel_to_workspace(px, py):
     return (wx, wy)
 
 
+def pixel_to_workspace_at_z(px, py, z_m):
+    """Project a pixel onto an elevated plane at height z_m above the workspace.
+
+    Instead of intersecting the camera ray with the table surface (Z=0),
+    this intersects with a plane at Z=z_m.  For a tilted camera, the
+    bbox-center pixel of a tall object does NOT project to the object's
+    base on the table — it projects to a point shifted sideways by
+    parallax.  By intersecting at the object's mid-height, we recover
+    the true horizontal position of its center.
+
+    Returns (wx, wy, z_m) in normalised workspace coords, or None.
+    """
+    with _state_lock:
+        workspace_origin = None if _workspace_origin is None else _workspace_origin.copy()
+        workspace_x_axis = None if _workspace_x_axis is None else _workspace_x_axis.copy()
+        workspace_y_axis = None if _workspace_y_axis is None else _workspace_y_axis.copy()
+        workspace_normal = None if _workspace_normal is None else _workspace_normal.copy()
+        workspace_size_m = _workspace_size_m
+
+    if (workspace_origin is None or workspace_x_axis is None or
+            workspace_y_axis is None or workspace_normal is None or
+            workspace_size_m is None):
+        return None
+
+    # Plane equation: dot(normal, point) = dot(normal, origin + z_m * normal)
+    elevated_origin = workspace_origin + workspace_normal * z_m
+    ray = _pixel_to_ray(px, py)
+
+    denom = float(np.dot(workspace_normal, ray))
+    if abs(denom) < 1e-6:
+        return None
+
+    distance = float(np.dot(workspace_normal, elevated_origin) / denom)
+    if distance <= 0:
+        return None
+
+    point = ray * distance
+    relative = point - workspace_origin
+    wx = float(np.dot(relative, workspace_x_axis) / workspace_size_m[0])
+    wy = float(np.dot(relative, workspace_y_axis) / workspace_size_m[1])
+    return (wx, wy, z_m)
+
 def workspace_to_inches(position):
     """Convert normalised workspace coordinates to inches."""
     with _state_lock:

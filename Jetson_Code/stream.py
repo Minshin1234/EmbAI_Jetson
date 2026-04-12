@@ -358,9 +358,12 @@ def _build_object_payload():
         else:
             cls_name = str(cls_id)
         cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        obj_z_m = vision_aruco.estimate_object_z(cx, y1, y2)
+        # Project bbox bottom-center onto the table plane for horizontal
+        # position.  This gives the true base position of the cup.
         ws_pos = vision_aruco.pixel_to_workspace(cx, y2)
         ws_pos_in = vision_aruco.workspace_to_inches(ws_pos)
-        obj_z_m = vision_aruco.estimate_object_z(cx, y1, y2)
         objects.append(
             {
                 "class": cls_name,
@@ -725,12 +728,34 @@ def go_to_target():
     # Rotate workspace→IK frame:
     # Arm faces -Y in workspace. So Forward (+IK_X) = -WS_Y.
     # Arm's Left (+IK_Y) is -WS_X (since +WS_X is Right).
-    ik_x = -y_m  # forward
-    ik_y = -x_m  # left
-    ik_z = z_m   # down
+    ik_x_raw = -y_m  # forward
+    ik_y_raw = -x_m  # left
+    ik_z = z_m        # down
+
+    # ── Angular alignment correction ──
+    # The WS axes are rotated a few degrees relative to the IK frame,
+    # causing the arm to drift LEFT for far targets.  A positive angle
+    # rotates the IK target to correct this distance-dependent drift.
+    import math
+    WS_ROTATION_DEG = 8  # increase if still drifting left at far range
+    _theta = math.radians(WS_ROTATION_DEG)
+    _cos_t = math.cos(_theta)
+    _sin_t = math.sin(_theta)
+    ik_x = ik_x_raw * _cos_t - ik_y_raw * _sin_t
+    ik_y = ik_x_raw * _sin_t + ik_y_raw * _cos_t
+
+    # ── Constant lateral correction ──
+    # Positive = shift target to arm's RIGHT (fixes leftward bias at close range)
+    IK_Y_CORRECTION_M = 0.053   # +2.1 inches
+    ik_y += IK_Y_CORRECTION_M
+
+    # ── Forward reach correction ──
+    # The arm undershoots (falls short of the cup). Nudge the target forward.
+    IK_X_CORRECTION_M = 0.102   # +2.0 inches forward
+    ik_x += IK_X_CORRECTION_M
 
     print(f"[IK] Workspace pos (in): x={ws_in[0]:.2f}, y={ws_in[1]:.2f}, z={z_in:.2f}", flush=True)
-    print(f"[IK] IK target (m): x={ik_x:.4f}, y={ik_y:.4f}, z={ik_z:.4f}", flush=True)
+    print(f"[IK] IK target (m): x={ik_x:.4f}, y={ik_y:.4f}, z={ik_z:.4f} (rot={WS_ROTATION_DEG}° fwd={IK_X_CORRECTION_M:+.4f} lat={IK_Y_CORRECTION_M:+.4f})", flush=True)
 
     # 3. Connect to VEX serial if not already connected
     if vex_serial is None:
@@ -756,10 +781,40 @@ def go_to_target():
     except Exception as e:
         return jsonify({"error": f"IK failed: {str(e)}"})
 
-    # 6. Send angles
+    # 6. Raise-then-arc motion: go up first, then arc down to target
+    #    with J4 (wrist pitch) locked at 90° (pointing straight down).
+    RAISED_J1 = 0.0    # shoulder straight up
+    RAISED_J2 = 0.0    # elbow straight
+    RAISED_J3 = 0.0    # wrist yaw centered
+    GRIP_DOWN = 90.0   # J4 = gripper pointing down
+    DESCENT_STEPS = 8  # number of interpolation steps
+    STEP_DELAY = 0.15  # seconds between steps
+
+    target_J0 = angles_deg[0]  # turntable angle from IK
+    final_angles = list(angles_deg)
+    final_angles[4] = GRIP_DOWN  # force J4 to 90° in final pose too
+
+    # Step A: raise the arm straight up, rotate turntable to face target
+    raised_angles = [target_J0, RAISED_J1, RAISED_J2, RAISED_J3, GRIP_DOWN]
+    print(f"[IK] Step 0/{DESCENT_STEPS}: RAISE {[round(a,1) for a in raised_angles]}", flush=True)
+
     serial_ok = False
     if vex_serial.connected:
-        serial_ok = vex_serial.send_all_joints_deg(angles_deg)
+        vex_serial.send_all_joints_deg(raised_angles)
+    time.sleep(1.0)  # wait for arm to reach raised position
+
+    # Step B: arc from raised position to final target in smooth steps
+    for step in range(1, DESCENT_STEPS + 1):
+        t = step / DESCENT_STEPS  # 0→1 interpolation factor
+        step_angles = [
+            raised_angles[j] + t * (final_angles[j] - raised_angles[j])
+            for j in range(5)
+        ]
+        step_angles[4] = GRIP_DOWN  # keep J4 locked at 90° throughout
+        print(f"[IK] Step {step}/{DESCENT_STEPS}: ARC {[round(a,1) for a in step_angles]}", flush=True)
+        if vex_serial.connected:
+            serial_ok = vex_serial.send_all_joints_deg(step_angles)
+        time.sleep(STEP_DELAY)
 
     return jsonify({
         "ok": True,
@@ -767,7 +822,7 @@ def go_to_target():
         "target_pos_in": ws_in,
         "target_z_in": z_in,
         "target_pos_m": [round(x_m, 4), round(y_m, 4), round(z_m, 4)],
-        "angles_deg": [round(a, 2) for a in angles_deg],
+        "angles_deg": [round(a, 2) for a in final_angles],
         "current_angles_deg": current_angles,
         "serial_sent": serial_ok,
         "serial_connected": vex_serial.connected,
